@@ -9,6 +9,7 @@ from telegram.ext import (
     filters,
     ContextTypes,
 )
+from telegram.error import RetryAfter, BadRequest
 
 # -------- CONFIG --------
 BOT_TOKEN = "8482425122:AAF63Rw-hwVxGYLpPk0y9G2rarIffJkXsrs"
@@ -16,16 +17,19 @@ BOT_TOKEN = "8482425122:AAF63Rw-hwVxGYLpPk0y9G2rarIffJkXsrs"
 # ONLY 2 OWNERS
 OWNERS = {8453291493, 8295675309}
 
-# 🔥 NEW MASTER EMOJI POOL (CHANGED)
+# ⏱️ OFFSET (THIRD BOT)
+OFFSET = 1.0
+
+# 🎭 UNIQUE EMOJI THEME (BOT-3)
 MASTER_EMOJIS = [
-    "👿","😡","🤡","🦍","🐺","🐍","🦂","🕸️","🕷️","🦇",
-    "🌑","🌚","🌒","⚔️","🗡️","🪓","☠️","💣","🔥","🩸"
+    "🐉","🐲","🦈","🦅","🦁","🐺","🦂","🕷️","🕸️","👁️",
+    "⚡","🔥","💥","🌪️","🌩️","☄️","🪐","🌌","☠️","🩸"
 ]
 
 # -------- AUTO EMOJI GENERATOR --------
 def generate_emojis(token: str):
-    hash_val = hashlib.sha256(token.encode()).hexdigest()
-    random.seed(hash_val)
+    h = hashlib.sha256(token.encode()).hexdigest()
+    random.seed(h)
     emojis = MASTER_EMOJIS.copy()
     random.shuffle(emojis)
     return emojis[:8]
@@ -42,7 +46,7 @@ def is_owner(user_id: int) -> bool:
 # -------- COMMANDS --------
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_owner(update.effective_user.id):
-        return await update.message.reply_text("❌ Private bot. Access denied.")
+        return
     await update.message.reply_text("🤖 Bot Online\nUse /help")
 
 async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -68,13 +72,12 @@ async def spam(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(text)
         await asyncio.sleep(0.15)
 
+# -------- GCNC (HARD UNLIMITED + OFFSET) --------
 async def gcnc(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user = update.effective_user
-    chat = update.effective_chat
-
-    if not is_owner(user.id):
+    if not is_owner(update.effective_user.id):
         return
 
+    chat = update.effective_chat
     if chat.type not in ["group", "supergroup"]:
         return await update.message.reply_text("Group only command.")
 
@@ -84,23 +87,40 @@ async def gcnc(update: Update, context: ContextTypes.DEFAULT_TYPE):
     base = " ".join(context.args)
 
     async def loop():
-        try:
-            while True:
-                emoji = random.choice(EMOJIS)
+        emoji_index = 0
+        emoji_list = EMOJIS.copy()
+
+        # initial offset so bots rotate safely
+        await asyncio.sleep(OFFSET)
+
+        while True:
+            try:
+                emoji = emoji_list[emoji_index]
+                emoji_index = (emoji_index + 1) % len(emoji_list)
+
                 await chat.set_title(f"{emoji} {base}")
+                await asyncio.sleep(0.5)  # ⚡ FAST BASE SPEED
+
+            except RetryAfter as e:
+                await asyncio.sleep(e.retry_after + 1)
+
+            except BadRequest:
+                # same title / minor issue → continue
+                await asyncio.sleep(0.3)
+                continue
+
+            except asyncio.CancelledError:
+                break
+
+            except Exception:
                 await asyncio.sleep(2)
-        except asyncio.CancelledError:
-            pass
-        except Exception:
-            await asyncio.sleep(5)
+                continue
 
     if chat.id in gcnc_tasks:
         gcnc_tasks[chat.id].cancel()
 
-    task = context.application.create_task(loop())
-    gcnc_tasks[chat.id] = task
-
-    await update.message.reply_text("✅ GCNC started (emoji auto-rotate)")
+    gcnc_tasks[chat.id] = context.application.create_task(loop())
+    await update.message.reply_text("✅ GCNC started (BOT-3 UNLIMITED + OFFSET)")
 
 async def stopgcnc(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_owner(update.effective_user.id):
@@ -115,9 +135,9 @@ async def stopgcnc(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         await update.message.reply_text("No GCNC running.")
 
+# -------- WELCOME --------
 async def welcome(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    chat = update.effective_chat
-    if chat.type not in ["group", "supergroup"]:
+    if update.effective_chat.type not in ["group", "supergroup"]:
         return
     for member in update.message.new_chat_members:
         await update.message.reply_text(
